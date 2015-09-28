@@ -40,7 +40,7 @@ class YiiBase
 	private static $_logger;
 	public static function getVersion()
 	{
-		return '1.1.16';
+		return '1.1.17-dev';
 	}
 	public static function createWebApplication($config=null)
 	{
@@ -249,7 +249,7 @@ class YiiBase
 			else  // class name with namespace in PHP 5.3
 			{
 				$namespace=str_replace('\\','.',ltrim($className,'\\'));
-				if(($path=self::getPathOfAlias($namespace))!==false)
+				if(($path=self::getPathOfAlias($namespace))!==false && is_file($path.'.php'))
 					include($path.'.php');
 				else
 					return false;
@@ -584,6 +584,8 @@ class YiiBase
 	);
 }
 spl_autoload_register(array('YiiBase','autoload'));
+if(!class_exists('YiiBase', false))
+	require(dirname(__FILE__).'/YiiBase.php');
 class Yii extends YiiBase
 {
 }
@@ -2791,7 +2793,7 @@ class CHttpRequest extends CApplicationComponent
 			foreach ($languages as $language) {
 				$language=CLocale::getCanonicalID($language);
 				// en_us==en_us, en==en_us, en_us==en
-				if($language===$acceptedLanguage || strpos($acceptedLanguage,$language.'_')===0 || strpos($language,$acceptedLanguage.'_')===0) {
+				if($language===$preferredLanguage || strpos($preferredLanguage,$language.'_')===0 || strpos($language,$preferredLanguage.'_')===0) {
 					return $language;
 				}
 			}
@@ -2901,6 +2903,7 @@ class CHttpRequest extends CApplicationComponent
 		if($this->_csrfToken===null)
 		{
 			$cookie=$this->getCookies()->itemAt($this->csrfTokenName);
+			$cookie=preg_replace('#[^a-zA-Z0-9]*#', '', $cookie);
 			if(!$cookie || ($this->_csrfToken=$cookie->value)==null)
 			{
 				$cookie=$this->createCsrfCookie();
@@ -3295,6 +3298,10 @@ class CUrlRule extends CBaseUrlRule
 	public $params=array();
 	public $append;
 	public $hasHostInfo;
+	protected function escapeRegexpSpecialChars($matches)
+	{
+		return preg_quote($matches[0]);
+	}
 	public function __construct($route,$pattern)
 	{
 		if(is_array($route))
@@ -3310,7 +3317,6 @@ class CUrlRule extends CBaseUrlRule
 		}
 		$this->route=trim($route,'/');
 		$tr2['/']=$tr['/']='\\/';
-		$tr['.']='\\.';
 		if(strpos($route,'<')!==false && preg_match_all('/<(\w+)>/',$route,$matches2))
 		{
 			foreach($matches2[1] as $name)
@@ -3337,7 +3343,10 @@ class CUrlRule extends CBaseUrlRule
 		$this->append=$p!==$pattern;
 		$p=trim($p,'/');
 		$this->template=preg_replace('/<(\w+):?.*?>/','<$1>',$p);
-		$this->pattern='/^'.strtr($this->template,$tr).'\/';
+		$p=$this->template;
+		if(!$this->parsingOnly)
+			$p=preg_replace_callback('/(?<=^|>)[^<]+(?=<|$)/',array($this,'escapeRegexpSpecialChars'),$p);
+		$this->pattern='/^'.strtr($p,$tr).'\/';
 		if($this->append)
 			$this->pattern.='/u';
 		else
@@ -5429,7 +5438,8 @@ EOD;
 	{
 		$realAttribute=$attribute;
 		self::resolveName($model,$attribute); // strip off square brackets if any
-		$htmlOptions['required']=$model->isAttributeRequired($attribute);
+		if (!isset($htmlOptions['required']))
+			$htmlOptions['required']=$model->isAttributeRequired($attribute);
 		return self::activeLabel($model,$realAttribute,$htmlOptions);
 	}
 	public static function activeTextField($model,$attribute,$htmlOptions=array())
@@ -9594,7 +9604,7 @@ class CDbCommand extends CComponent
 			{
 				if(strpos($table,'(')===false)
 				{
-					if(preg_match('/^(.*?)(?i:\s+as\s+|\s+)(.*)$/',$table,$matches))  // with alias
+          if(preg_match('/^(.*?)(?i:\s+as|)\s+([^ ]+)$/',$table,$matches))  // with alias
 						$tables[$i]=$this->_connection->quoteTableName($matches[1]).' '.$this->_connection->quoteTableName($matches[2]);
 					else
 						$tables[$i]=$this->_connection->quoteTableName($table);
@@ -9968,7 +9978,7 @@ class CDbCommand extends CComponent
 	{
 		if(strpos($table,'(')===false)
 		{
-			if(preg_match('/^(.*?)(?i:\s+as\s+|\s+)(.*)$/',$table,$matches))  // with alias
+      if(preg_match('/^(.*?)(?i:\s+as|)\s+([^ ]+)$/',$table,$matches))  // with alias
 				$table=$this->_connection->quoteTableName($matches[1]).' '.$this->_connection->quoteTableName($matches[2]);
 			else
 				$table=$this->_connection->quoteTableName($table);
@@ -10102,7 +10112,7 @@ abstract class CValidator extends CComponent
 	public static function createValidator($name,$object,$attributes,$params=array())
 	{
 		if(is_string($attributes))
-			$attributes=preg_split('/\s*,\s*/',$attributes,-1,PREG_SPLIT_NO_EMPTY);
+			$attributes=preg_split('/\s*,\s*/',trim($attributes, " \t\n\r\0\x0B,"),-1,PREG_SPLIT_NO_EMPTY);
 		if(isset($params['on']))
 		{
 			if(is_array($params['on']))
