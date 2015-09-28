@@ -1253,7 +1253,11 @@ class CHttpRequest extends CApplicationComponent
 		if($this->_csrfToken===null)
 		{
 			$cookie=$this->getCookies()->itemAt($this->csrfTokenName);
-			$cookie=preg_replace('#[^a-zA-Z0-9]*#', '', $cookie);
+			if($cookie&&$cookie->value!=null){
+				if(preg_match('#[^a-zA-Z0-9]#',$cookie->value)!==0){
+					$cookie=null;
+				}
+			}
 			if(!$cookie || ($this->_csrfToken=$cookie->value)==null)
 			{
 				$cookie=$this->createCsrfCookie();
@@ -1261,7 +1265,6 @@ class CHttpRequest extends CApplicationComponent
 				$this->getCookies()->add($cookie->name,$cookie);
 			}
 		}
-
 		return $this->_csrfToken;
 	}
 
