@@ -40,7 +40,7 @@ class YiiBase
 	private static $_logger;
 	public static function getVersion()
 	{
-		return '1.1.17-dev';
+		return '1.1.18-dev';
 	}
 	public static function createWebApplication($config=null)
 	{
@@ -361,7 +361,7 @@ class YiiBase
 		'CApplicationComponent' => '/base/CApplicationComponent.php',
 		'CBehavior' => '/base/CBehavior.php',
 		'CComponent' => '/base/CComponent.php',
-        'CDbStatePersister' => '/base/CDbStatePersister.php',
+		'CDbStatePersister' => '/base/CDbStatePersister.php',
 		'CErrorEvent' => '/base/CErrorEvent.php',
 		'CErrorHandler' => '/base/CErrorHandler.php',
 		'CException' => '/base/CException.php',
@@ -1361,6 +1361,10 @@ abstract class CApplication extends CModule
 	{
 		return $this->getComponent('urlManager');
 	}
+	public function getFormat()
+	{
+		return $this->getComponent('format');
+	}
 	public function getController()
 	{
 		return null;
@@ -1772,7 +1776,7 @@ class CWebApplication extends CApplication
 	{
 		if($owner===null)
 			$owner=$this;
-		if(($route=trim($route,'/'))==='')
+		if((array)$route===$route || ($route=trim($route,'/'))==='')
 			$route=$owner->defaultController;
 		$caseSensitive=$this->getUrlManager()->caseSensitive;
 		$route.='/';
@@ -2265,6 +2269,7 @@ abstract class CApplicationComponent extends CComponent implements IApplicationC
 }
 class CHttpRequest extends CApplicationComponent
 {
+	public $jsonAsArray = true;
 	public $enableCookieValidation=false;
 	public $enableCsrfValidation=false;
 	public $csrfTokenName='YII_CSRF_TOKEN';
@@ -2369,7 +2374,9 @@ class CHttpRequest extends CApplicationComponent
 		if($this->_restParams===null)
 		{
 			$result=array();
-			if(function_exists('mb_parse_str'))
+			if (strncmp($this->getContentType(), 'application/json', 16) === 0)
+				$result = CJSON::decode($this->getRawBody(), $this->jsonAsArray);
+			elseif(function_exists('mb_parse_str'))
 				mb_parse_str($this->getRawBody(), $result);
 			else
 				parse_str($this->getRawBody(), $result);
@@ -2478,9 +2485,9 @@ class CHttpRequest extends CApplicationComponent
 				$pathInfo=substr($_SERVER['PHP_SELF'],strlen($scriptUrl));
 			else
 				throw new CException(Yii::t('yii','CHttpRequest is unable to determine the path info of the request.'));
-			if($pathInfo==='/')
+			if($pathInfo==='/' || $pathInfo===false)
 				$pathInfo='';
-			elseif($pathInfo[0]==='/')
+			elseif($pathInfo!=='' && $pathInfo[0]==='/')
 				$pathInfo=substr($pathInfo,1);
 			if(($posEnd=strlen($pathInfo)-1)>0 && $pathInfo[$posEnd]==='/')
 				$pathInfo=substr($pathInfo,0,$posEnd);
@@ -2552,8 +2559,8 @@ class CHttpRequest extends CApplicationComponent
 	{
 		if(isset($_POST['_method']))
 			return strtoupper($_POST['_method']);
-                elseif(isset($_SERVER['HTTP_X_HTTP_METHOD_OVERRIDE']))
-                	return strtoupper($_SERVER['HTTP_X_HTTP_METHOD_OVERRIDE']);
+		elseif(isset($_SERVER['HTTP_X_HTTP_METHOD_OVERRIDE']))
+			return strtoupper($_SERVER['HTTP_X_HTTP_METHOD_OVERRIDE']);
 		return strtoupper(isset($_SERVER['REQUEST_METHOD'])?$_SERVER['REQUEST_METHOD']:'GET');
 	}
 	public function getIsPostRequest()
@@ -2630,6 +2637,16 @@ class CHttpRequest extends CApplicationComponent
 	public function getAcceptTypes()
 	{
 		return isset($_SERVER['HTTP_ACCEPT'])?$_SERVER['HTTP_ACCEPT']:null;
+	}
+	public function getContentType()
+	{
+		if (isset($_SERVER["CONTENT_TYPE"])) {
+			return $_SERVER["CONTENT_TYPE"];
+		} elseif (isset($_SERVER["HTTP_CONTENT_TYPE"])) {
+			//fix bug https://bugs.php.net/bug.php?id=66606
+			return $_SERVER["HTTP_CONTENT_TYPE"];
+		}
+		return null;
 	}
 	private $_port;
 	public function getPort()
@@ -8293,8 +8310,10 @@ class CBaseActiveRelation extends CComponent
 			$criteria=$criteria->toArray();
 		if(isset($criteria['select']) && $this->select!==$criteria['select'])
 		{
-			if($this->select==='*')
+			if($this->select==='*'||$this->select===false)
 				$this->select=$criteria['select'];
+			elseif($criteria['select']===false)
+				$this->select=false;
 			elseif($criteria['select']!=='*')
 			{
 				$select1=is_string($this->select)?preg_split('/\s*,\s*/',trim($this->select),-1,PREG_SPLIT_NO_EMPTY):$this->select;
@@ -9107,21 +9126,21 @@ abstract class CDbSchema extends CComponent
 }
 class CSqliteSchema extends CDbSchema
 {
-    public $columnTypes=array(
-        'pk' => 'integer PRIMARY KEY AUTOINCREMENT NOT NULL',
-        'bigpk' => 'integer PRIMARY KEY AUTOINCREMENT NOT NULL',
-        'string' => 'varchar(255)',
-        'text' => 'text',
-        'integer' => 'integer',
-        'bigint' => 'integer',
-        'float' => 'float',
-        'decimal' => 'decimal',
-        'datetime' => 'datetime',
-        'timestamp' => 'timestamp',
-        'time' => 'time',
-        'date' => 'date',
-        'binary' => 'blob',
-        'boolean' => 'tinyint(1)',
+	public $columnTypes=array(
+		'pk' => 'integer PRIMARY KEY AUTOINCREMENT NOT NULL',
+		'bigpk' => 'integer PRIMARY KEY AUTOINCREMENT NOT NULL',
+		'string' => 'varchar(255)',
+		'text' => 'text',
+		'integer' => 'integer',
+		'bigint' => 'integer',
+		'float' => 'float',
+		'decimal' => 'decimal',
+		'datetime' => 'datetime',
+		'timestamp' => 'timestamp',
+		'time' => 'time',
+		'date' => 'date',
+		'binary' => 'blob',
+		'boolean' => 'tinyint(1)',
 		'money' => 'decimal(19,4)',
 	);
 	public function resetSequence($table,$value=null)
@@ -9609,7 +9628,7 @@ class CDbCommand extends CComponent
 			{
 				if(strpos($table,'(')===false)
 				{
-          if(preg_match('/^(.*?)(?i:\s+as|)\s+([^ ]+)$/',$table,$matches))  // with alias
+					if(preg_match('/^(.*?)(?i:\s+as|)\s+([^ ]+)$/',$table,$matches))  // with alias
 						$tables[$i]=$this->_connection->quoteTableName($matches[1]).' '.$this->_connection->quoteTableName($matches[2]);
 					else
 						$tables[$i]=$this->_connection->quoteTableName($table);
@@ -9983,7 +10002,7 @@ class CDbCommand extends CComponent
 	{
 		if(strpos($table,'(')===false)
 		{
-      if(preg_match('/^(.*?)(?i:\s+as|)\s+([^ ]+)$/',$table,$matches))  // with alias
+			if(preg_match('/^(.*?)(?i:\s+as|)\s+([^ ]+)$/',$table,$matches))  // with alias
 				$table=$this->_connection->quoteTableName($matches[1]).' '.$this->_connection->quoteTableName($matches[2]);
 			else
 				$table=$this->_connection->quoteTableName($table);
@@ -10459,12 +10478,10 @@ class CListIterator implements Iterator
 {
 	private $_d;
 	private $_i;
-	private $_c;
 	public function __construct(&$data)
 	{
 		$this->_d=&$data;
 		$this->_i=0;
-		$this->_c=count($this->_d);
 	}
 	public function rewind()
 	{
@@ -10484,7 +10501,7 @@ class CListIterator implements Iterator
 	}
 	public function valid()
 	{
-		return $this->_i<$this->_c;
+		return $this->_i<count($this->_d);
 	}
 }
 interface IApplicationComponent
