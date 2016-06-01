@@ -4603,6 +4603,8 @@ class CHttpSession extends CApplicationComponent implements IteratorAggregate,Ar
 	}
 	public function getIsStarted()
 	{
+		if(function_exists('session_status'))
+			return session_status() === PHP_SESSION_ACTIVE;
 		return session_id()!=='';
 	}
 	public function getSessionID()
@@ -9321,12 +9323,12 @@ class CDbTableSchema extends CComponent
 class CDbCommand extends CComponent
 {
 	public $params=array();
-	private $_connection;
-	private $_text;
-	private $_statement;
-	private $_paramLog=array();
-	private $_query;
-	private $_fetchMode = array(PDO::FETCH_ASSOC);
+	protected $_connection;
+	protected $_text;
+	protected $_statement;
+	protected $_paramLog=array();
+	protected $_query;
+	protected $_fetchMode = array(PDO::FETCH_ASSOC);
 	public function __construct(CDbConnection $connection,$query=null)
 	{
 		$this->_connection=$connection;
@@ -9500,7 +9502,7 @@ class CDbCommand extends CComponent
 	{
 		return $this->queryInternal('fetchAll',array(PDO::FETCH_COLUMN, 0),$params);
 	}
-	private function queryInternal($method,$mode,$params=array())
+	protected function queryInternal($method,$mode,$params=array())
 	{
 		$params=array_merge($this->params,$params);
 		if($this->_connection->enableParamLogging && ($pars=array_merge($this->_paramLog,$params))!==array())
